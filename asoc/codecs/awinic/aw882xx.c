@@ -68,10 +68,6 @@
 #define AWINIC_CALI_FILE  "/mnt/vendor/persist/factory/audio/aw_cali.bin"
 
 #ifdef CONFIG_AW882XX_DSP
-#undef CONFIG_AW882XX_DSP
-#endif
-
-#ifdef CONFIG_AW882XX_DSP
 extern int aw_send_afe_cal_apr(uint32_t param_id, void *buf,int cmd_size, bool write);
 extern int aw_send_afe_rx_module_enable(void *buf, int cmd_size);
 extern int aw_send_afe_tx_module_enable(void *buf, int cmd_size);
