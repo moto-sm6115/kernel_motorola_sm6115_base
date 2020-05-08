@@ -175,6 +175,7 @@ enum AWINIC_PROFILE{
 	AW_PROFILE_MAX,
 };
 
+#define AW882XX_RUNIN_TEST
 #define VERSION_MAX 4
 #define PROJECT_NAME_MAX 24
 #define VOLUME_STEP_DB  (6)
@@ -208,6 +209,9 @@ struct aw882xx {
 	struct mutex lock;
 
 	struct aw882xx_monitor monitor;
+#ifdef AW882XX_RUNIN_TEST
+	struct delayed_work adsp_status;
+#endif
 	int sysclk;
 	int rate;
 	int pstream;
