@@ -90,6 +90,12 @@ enum aw882xx_init {
 	AW882XX_INIT_NG = 2,
 };
 
+enum aw882xx_power_status {
+	AW882XX_POWER_DOWN = 0,
+	AW882XX_POWER_ING = 1,
+	AW882XX_POWER_UP = 2,
+};
+
 enum aw882xx_chipid {
 	AW882XX_ID = 0x1852,
 };
@@ -167,6 +173,8 @@ struct aw882xx_monitor{
 #endif
 };
 
+/*control runin test function*/
+#define AW882XX_RUNIN_TEST
 enum AWINIC_PROFILE{
 	AW_PROFILE_MUSIC = 0,
 	AW_PROFILE_RINGTONE,
@@ -175,7 +183,6 @@ enum AWINIC_PROFILE{
 	AW_PROFILE_MAX,
 };
 
-#define AW882XX_RUNIN_TEST
 #define VERSION_MAX 4
 #define PROJECT_NAME_MAX 24
 #define VOLUME_STEP_DB  (6)
@@ -219,6 +226,7 @@ struct aw882xx {
 
 	int reset_gpio;
 	int irq_gpio;
+	int power_flag;
 
 	unsigned char reg_addr;
 
@@ -228,6 +236,7 @@ struct aw882xx {
 	unsigned int spk_rcv_mode;
 	int32_t cali_re;
 	unsigned int cfg_num;
+	unsigned int afe_profile;
 	struct  profile_info profile;
 };
 
