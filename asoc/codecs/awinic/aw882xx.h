@@ -167,6 +167,18 @@ struct aw882xx_monitor{
 	uint32_t is_enable;
 	uint16_t pre_vol;
 	int16_t pre_temp;
+
+	struct aw882xx_low_vol vol_cfg;
+	struct aw882xx_low_temp temp_cfg;
+	int vol_up_num;
+	int vol_down_num;
+	int temp_up_num;
+	int temp_down_num;
+	struct aw882xx_low_vol *vol_up_table;
+	struct aw882xx_low_vol *vol_down_table;
+	struct aw882xx_low_temp *temp_up_table;
+	struct aw882xx_low_temp *temp_down_table;
+
 #ifdef AW_DEBUG
 	uint16_t test_vol;
 	int16_t test_temp;

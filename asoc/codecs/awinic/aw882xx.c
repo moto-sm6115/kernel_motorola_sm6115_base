@@ -295,6 +295,7 @@ static void aw882xx_run_mute(struct aw882xx *aw882xx, bool mute)
 	pr_debug("%s: enter\n", __func__);
 
 	if (mute) {
+	if (aw882xx->afe_profile)
 		aw882xx_fade_in_out(aw882xx, false);
 		aw882xx_i2c_write_bits(aw882xx, AW882XX_SYSCTRL2_REG,
 				AW882XX_HMUTE_MASK,
@@ -303,6 +304,7 @@ static void aw882xx_run_mute(struct aw882xx *aw882xx, bool mute)
 		aw882xx_i2c_write_bits(aw882xx, AW882XX_SYSCTRL2_REG,
 				AW882XX_HMUTE_MASK,
 				AW882XX_HMUTE_DISABLE_VALUE);
+	if (aw882xx->afe_profile)
 		aw882xx_fade_in_out(aw882xx, true);
 	}
 }
@@ -491,7 +493,7 @@ static void aw882xx_start(struct aw882xx *aw882xx)
 		__func__, aw882xx->monitor.is_enable, aw882xx->spk_rcv_mode);
 	if (aw882xx->monitor.is_enable &&
 		(aw882xx->spk_rcv_mode == AW882XX_SPEAKER_MODE)) {
-		aw882xx_monitor_start(&aw882xx->monitor);
+		schedule_work(&aw882xx->monitor.work);
 	}
 	if (aw882xx->afe_profile) {
 	ret = aw882xx_send_profile_params_to_dsp(aw882xx, aw882xx->profile.cur_profile, false);
@@ -1676,10 +1678,147 @@ static irqreturn_t aw882xx_irq(int irq, void *data)
  * device tree
  *
  *****************************************************/
+int aw882xx_parse_low_vol_cfg(struct device *dev, struct aw882xx *aw882xx,
+		struct device_node *np, char *dir, struct aw882xx_low_vol **table, int *num)
+{
+	int ret;
+	int i;
+	uint32_t *cfg_value;
+	char cfg_name[32] = {0};
+	int cfg_len;
+
+	snprintf(cfg_name, sizeof(cfg_name), "low-vol-table-%s", dir);
+
+	cfg_len = of_property_count_u32_elems(np, cfg_name);
+	if (cfg_len <= 0) {
+		dev_info(dev, "%s: %s get cfg_len:%d error\n",
+			__func__, cfg_name, cfg_len);
+		goto use_default;
+	}
+
+	cfg_value = devm_kzalloc(dev, sizeof(uint32_t) * cfg_len, GFP_KERNEL);
+	if (!cfg_value) {
+		dev_info(dev,"%s: %s aw_cfg kzalloc failed\n",
+				__func__, cfg_name);
+		goto use_default;
+	}
+
+	ret = of_property_read_u32_array(np, cfg_name, cfg_value, cfg_len);
+	if (ret != 0) {
+		dev_info(dev, "%s: fail get %s dt\n",
+			__func__, cfg_name);
+		devm_kfree(dev, cfg_value);
+		goto use_default;
+	}
+	*num = cfg_len / 3;
+	*table = devm_kzalloc(dev, sizeof(struct aw882xx_low_vol) * (*num), GFP_KERNEL);
+	if (!(*table)) {
+		dev_info(dev, "%s: %s table kzalloc failed\n",
+				__func__, cfg_name);
+		devm_kfree(dev, cfg_value);
+		goto use_default;
+	}
+
+	for(i = 0; i < (*num); i++) {
+		(*table)[i].vol = cfg_value[3 * i];
+		(*table)[i].ipeak = cfg_value[3 * i + 1];
+		(*table)[i].gain = cfg_value[3 * i + 2];
+	}
+
+	devm_kfree(dev, cfg_value);
+
+	return 0;
+
+use_default:
+	dev_info(dev, "%s: %s low-vol table use default cfg\n", __func__, cfg_name);
+	if (!strcmp(dir,"up")) {
+		*table = vol_up_table;
+		*num = sizeof(vol_up_table) / sizeof(struct aw882xx_low_vol);
+	} else if (!strcmp(dir,"down")) {
+		*table = vol_down_table;
+		*num = sizeof(vol_down_table) / sizeof(struct aw882xx_low_vol);
+	} else {
+		 dev_err(dev,"%s: unsupport dir %s\n",
+			__func__, dir);
+		return -EINVAL;
+	}
+	return 0;
+}
+
+
+int aw882xx_parse_low_temp_cfg(struct device *dev, struct aw882xx *aw882xx,
+		struct device_node *np, char *dir, struct aw882xx_low_temp **table, int *num)
+{
+	int ret;
+	int i;
+	uint32_t *cfg_value;
+	char cfg_name[32] = {0};
+	int cfg_len;
+
+	snprintf(cfg_name, sizeof(cfg_name), "low-temp-table-%s", dir);
+
+	cfg_len = of_property_count_u32_elems(np, cfg_name);
+	if (cfg_len <= 0) {
+		dev_info(dev, "%s: %s get cfg_len:%d error\n",
+			__func__, cfg_name, cfg_len);
+		goto use_default;
+	}
+
+	cfg_value = devm_kzalloc(dev, sizeof(uint32_t) * cfg_len, GFP_KERNEL);
+	if (!cfg_value) {
+		dev_info(dev,"%s: %s aw_cfg kzalloc failed\n",
+				__func__, cfg_name);
+		goto use_default;
+	}
+
+	ret = of_property_read_u32_array(np, cfg_name, cfg_value, cfg_len);
+	if (ret != 0) {
+		dev_info(dev, "%s: fail get %s dt\n",
+			__func__, cfg_name);
+		devm_kfree(dev, cfg_value);
+		goto use_default;
+	}
+	*num = cfg_len / 4;
+	*table = devm_kzalloc(dev, sizeof(struct aw882xx_low_temp) * (*num), GFP_KERNEL);
+	if (!(*table)) {
+		dev_info(dev, "%s: %s table kzalloc failed\n",
+				__func__, cfg_name);
+		devm_kfree(dev, cfg_value);
+		goto use_default;
+	}
+
+	for(i = 0; i < (*num); i++) {
+		(*table)[i].temp = cfg_value[4 * i];
+		(*table)[i].ipeak = cfg_value[4 * i + 1];
+		(*table)[i].gain = cfg_value[4 * i + 2];
+		(*table)[i].vmax = cfg_value[4 * i + 3];
+	}
+
+	devm_kfree(dev, cfg_value);
+
+	return 0;
+
+use_default:
+	dev_info(dev, "%s: %s temp table use default cfg\n", __func__, cfg_name);
+	if (!strcmp(dir,"up")) {
+		*table = temp_up_table;
+		*num = sizeof(temp_up_table) / sizeof(struct aw882xx_low_temp);
+	} else if (!strcmp(dir,"down")) {
+		*table = temp_down_table;
+		*num = sizeof(temp_down_table) / sizeof(struct aw882xx_low_temp);
+	} else {
+		dev_err(dev,"%s: unsupport dir %s\n",
+			__func__, dir);
+		return -EINVAL;
+	}
+	return 0;
+}
+
 static int aw882xx_parse_dt(struct device *dev, struct aw882xx *aw882xx,
 		struct device_node *np)
 {
 	int ret = 0;
+	int i = 0;
 	struct aw882xx_monitor *monitor = &aw882xx->monitor;
 	/* gpio */
 	aw882xx->reset_gpio = of_get_named_gpio(np, "reset-gpio", 0);
@@ -1720,6 +1859,53 @@ static int aw882xx_parse_dt(struct device *dev, struct aw882xx *aw882xx,
 		dev_info(dev, "%s: afe-profile = %d\n",
 			__func__, aw882xx->afe_profile);
 	}
+
+	/*get low vol table cfg*/
+	ret = aw882xx_parse_low_vol_cfg(dev, aw882xx, np, "up",
+			&monitor->vol_up_table, &monitor->vol_up_num);
+	if (ret <0)
+		return ret;
+
+	ret = aw882xx_parse_low_vol_cfg(dev, aw882xx, np, "down",
+			&monitor->vol_down_table, &monitor->vol_down_num);
+	if (ret < 0)
+		return ret;
+
+	for(i = 0; i < monitor->vol_up_num; i++)
+		dev_info(dev,"%s:vol_up_table vol:%d, %d, %d\n",
+			__func__, monitor->vol_up_table[i].vol,
+			monitor->vol_up_table[i].ipeak,
+			monitor->vol_up_table[i].gain);
+
+	for(i = 0; i < monitor->vol_down_num; i++)
+		dev_info(dev, "%s:vol_down_table vol:%d, %d, %d\n",
+			__func__, monitor->vol_down_table[i].vol,
+			monitor->vol_down_table[i].ipeak,
+			monitor->vol_down_table[i].gain);
+
+	/*get low temp table cfg*/
+	ret = aw882xx_parse_low_temp_cfg(dev, aw882xx, np, "up",
+			&monitor->temp_up_table, &monitor->temp_up_num);
+	if (ret <0)
+		return ret;
+
+	ret = aw882xx_parse_low_temp_cfg(dev, aw882xx, np, "down",
+			&monitor->temp_down_table, &monitor->temp_down_num);
+
+	for(i = 0; i < monitor->temp_up_num; i++)
+		dev_info(dev,"%s:temp_up_table temp:%d, 0x%x, 0x%x, 0x%x\n",
+			__func__, monitor->temp_up_table[i].temp,
+			monitor->temp_up_table[i].ipeak,
+			monitor->temp_up_table[i].gain,
+			monitor->temp_up_table[i].vmax);
+
+	for(i = 0; i < monitor->temp_down_num; i++)
+		dev_info(dev, "%s:temp_down_table temp:%d, 0x%x, 0x%x, 0x%x\n",
+			__func__, monitor->temp_down_table[i].temp,
+			monitor->temp_down_table[i].ipeak,
+			monitor->temp_down_table[i].gain,
+			monitor->temp_down_table[i].vmax);
+
 	return 0;
 }
 
@@ -1777,6 +1963,47 @@ int aw882xx_read_chipid(struct aw882xx *aw882xx)
 	}
 
 	return -EINVAL;
+}
+
+/******************************************************
+ *
+ * sys group attribute: monitor
+ *
+ ******************************************************/
+static ssize_t aw882xx_monitor_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct aw882xx *aw882xx = dev_get_drvdata(dev);
+	uint32_t enable = 0;
+	int ret = -1;
+
+	if (count == 0)
+		return 0;
+
+	ret = kstrtouint(buf, 0, &enable);
+	if (ret < 0)
+		return ret;
+
+	dev_info(dev, "%s:monitor  enable set =%d\n",
+		__func__, enable);
+	aw882xx->monitor.is_enable = enable;
+	if (enable)
+		aw882xx_monitor_start(&aw882xx->monitor);
+
+	return count;
+}
+
+static ssize_t aw882xx_monitor_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct aw882xx *aw882xx = dev_get_drvdata(dev);
+	ssize_t len = 0;
+	uint32_t local_enable;
+
+	local_enable = aw882xx->monitor.is_enable;
+	len += snprintf(buf+len, PAGE_SIZE-len,
+		"aw882xx monitor enable: %d\n", local_enable);
+	return len;
 }
 
 /******************************************************
@@ -2197,7 +2424,8 @@ exit:
 	return ret;
 }
 
-
+static DEVICE_ATTR(monitor, S_IWUSR | S_IRUGO,
+	aw882xx_monitor_show, aw882xx_monitor_store);
 static DEVICE_ATTR(reg, S_IWUSR | S_IRUGO,
 	aw882xx_reg_show, aw882xx_reg_store);
 static DEVICE_ATTR(rw, S_IWUSR | S_IRUGO,
@@ -2214,6 +2442,7 @@ static DEVICE_ATTR(temp, S_IWUSR | S_IRUGO,
 #endif
 
 static struct attribute *aw882xx_attributes[] = {
+	&dev_attr_monitor.attr,
 	&dev_attr_reg.attr,
 	&dev_attr_rw.attr,
 	&dev_attr_spk_rcv.attr,
@@ -2376,32 +2605,23 @@ static int aw882xx_monitor_voltage(struct aw882xx *aw882xx,
 #endif
 	if (monitor->pre_vol > voltage) {
 		/* vol down*/
-		for (i = 0; i < 3; i++) {
-			if (voltage < vol_down_table[i].vol) {
-				*vol_cfg = vol_down_table[i];
-				break;
+		for (i = 0; i < monitor->vol_down_num; i++) {
+			if (voltage < monitor->vol_down_table[i].vol) {
+			    *vol_cfg = monitor->vol_down_table[i];
+			    break;
 			}
-		}
-		if (i == 3) {
-			vol_cfg->ipeak = IPEAK_NONE;
-			vol_cfg->gain  = GAIN_NONE;
 		}
 	} else if (monitor->pre_vol < voltage) {
 		/*vol up*/
-		for (i = 0; i < 3; i++) {
-			if (voltage > vol_up_table[i].vol) {
-				*vol_cfg = vol_up_table[i];
+		for (i = 0; i < monitor->vol_up_num; i++) {
+			if (voltage > monitor->vol_up_table[i].vol) {
+				*vol_cfg = monitor->vol_up_table[i];
 				break;
 			}
 		}
-		if (i == 3) {
-			vol_cfg->ipeak = IPEAK_NONE;
-			vol_cfg->gain  = GAIN_NONE;
-		}
 	} else {
 		/*vol no change*/
-		vol_cfg->ipeak = IPEAK_NONE;
-		vol_cfg->gain  = GAIN_NONE;
+		pr_debug("%s: voltage no change\n", __func__);
 	}
 	monitor->pre_vol = voltage;
 	return 0;
@@ -2451,40 +2671,27 @@ static int aw882xx_monitor_temperature(struct aw882xx *aw882xx,
 #endif
 	if (monitor->pre_temp > current_temp) {
 		/*temp down*/
-		for (i = 0; i < 3; i++) {
-			if (current_temp < temp_down_table[i].temp) {
-				temp_cfg->ipeak = temp_down_table[i].ipeak;
-				temp_cfg->gain = temp_down_table[i].gain;
-				temp_cfg->vmax = temp_down_table[i].vmax;
+		for (i = 0; i < monitor->temp_down_num; i++) {
+			if (current_temp < monitor->temp_down_table[i].temp) {
+				temp_cfg->ipeak = monitor->temp_down_table[i].ipeak;
+				temp_cfg->gain = monitor->temp_down_table[i].gain;
+				temp_cfg->vmax = monitor->temp_down_table[i].vmax;
 				break;
 			}
-		}
-
-		if (i == 3) {
-			temp_cfg->ipeak = IPEAK_NONE;
-			temp_cfg->gain  = GAIN_NONE;
-			temp_cfg->vmax  = VMAX_NONE;
 		}
 	} else if (monitor->pre_temp < current_temp) {
 		/*temp up*/
-		for (i = 0; i < 3; i++) {
-			if (current_temp > temp_up_table[i].temp) {
-				temp_cfg->ipeak = temp_up_table[i].ipeak;
-				temp_cfg->gain  = temp_up_table[i].gain;
-				temp_cfg->vmax  = temp_up_table[i].vmax;
+		for (i = 0; i < monitor->temp_up_num; i++) {
+			if (current_temp > monitor->temp_up_table[i].temp) {
+				temp_cfg->ipeak = monitor->temp_up_table[i].ipeak;
+				temp_cfg->gain  = monitor->temp_up_table[i].gain;
+				temp_cfg->vmax  = monitor->temp_up_table[i].vmax;
 				break;
 			}
 		}
-		if (i == 3) {
-			temp_cfg->ipeak = IPEAK_NONE;
-			temp_cfg->gain  = GAIN_NONE;
-			temp_cfg->vmax  = VMAX_NONE;
-		}
 	} else {
 		/*temp no change*/
-		temp_cfg->ipeak = IPEAK_NONE;
-		temp_cfg->gain  = GAIN_NONE;
-		temp_cfg->vmax  = VMAX_NONE;
+		pr_debug("%s: temperature no change\n", __func__);
 	}
 	monitor->pre_temp = current_temp;
 	return 0;
@@ -2599,8 +2806,9 @@ static void aw882xx_monitor_set_vmax(struct aw882xx *aw882xx, uint32_t vmax)
 }
 static void aw882xx_monitor_work(struct aw882xx *aw882xx)
 {
-	struct aw882xx_low_vol vol_cfg;
-	struct aw882xx_low_temp temp_cfg;
+	struct aw882xx_low_vol *vol_cfg = &aw882xx->monitor.vol_cfg;
+	struct aw882xx_low_temp *temp_cfg = &aw882xx->monitor.temp_cfg;
+	struct aw882xx_low_temp set_cfg;
 	int ret;
 
 	if (aw882xx == NULL) {
@@ -2612,29 +2820,31 @@ static void aw882xx_monitor_work(struct aw882xx *aw882xx)
 		return;
 	}
 
-	ret = aw882xx_monitor_voltage(aw882xx, &vol_cfg);
+	ret = aw882xx_monitor_voltage(aw882xx, vol_cfg);
 	if (ret < 0) {
 		pr_err("%s: monitor voltage failed\n", __func__);
 		return;
 	}
 
-	ret = aw882xx_monitor_temperature(aw882xx, &temp_cfg);
+	ret = aw882xx_monitor_temperature(aw882xx, temp_cfg);
 	if (ret < 0) {
 		pr_err("%s: monitor temperature failed\n", __func__);
 		return;
 	}
 	pr_debug("%s: vol: ipeak = 0x%x, gain = 0x%x\n",
-			__func__, vol_cfg.ipeak, vol_cfg.gain);
+			__func__, vol_cfg->ipeak, vol_cfg->gain);
 	pr_debug("%s: temp: ipeak = 0x%x, gain = 0x%x, vmax = 0x%x\n",
-		__func__, temp_cfg.ipeak, temp_cfg.gain, temp_cfg.vmax);
+		__func__, temp_cfg->ipeak, temp_cfg->gain, temp_cfg->vmax);
 
-	aw882xx_monitor_get_cfg(&temp_cfg, &vol_cfg);
+	memcpy(&set_cfg, temp_cfg, sizeof(struct aw882xx_low_temp));
 
-	aw882xx_monitor_set_ipeak(aw882xx, temp_cfg.ipeak);
+	aw882xx_monitor_get_cfg(&set_cfg, vol_cfg);
 
-	aw882xx_monitor_set_gain(aw882xx, temp_cfg.gain);
+	aw882xx_monitor_set_ipeak(aw882xx, set_cfg.ipeak);
 
-	aw882xx_monitor_set_vmax(aw882xx, temp_cfg.vmax);
+	aw882xx_monitor_set_gain(aw882xx, set_cfg.gain);
+
+	aw882xx_monitor_set_vmax(aw882xx, set_cfg.vmax);
 }
 
 static int aw882xx_get_hmute(struct aw882xx *aw882xx)
@@ -2674,8 +2884,15 @@ void init_aw882xx_monitor(struct aw882xx_monitor *monitor)
 	hrtimer_init(&monitor->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	monitor->timer.function = aw882xx_monitor_timer_func;
 	INIT_WORK(&monitor->work, aw882xx_monitor_work_func);
-	monitor->pre_vol = 0;
-	monitor->pre_temp = 0;
+	monitor->pre_vol = 5000;
+	monitor->pre_temp = 100;
+
+	monitor->vol_cfg.ipeak = monitor->vol_up_table[0].ipeak;
+	monitor->vol_cfg.gain = monitor->vol_up_table[0].gain;
+	monitor->temp_cfg.ipeak = monitor->temp_up_table[0].ipeak;
+	monitor->temp_cfg.gain = monitor->temp_up_table[0].gain;
+	monitor->temp_cfg.vmax = monitor->temp_up_table[0].vmax;
+
 #ifdef AW_DEBUG
 	 monitor->test_vol = 0;
 	 monitor->test_temp = 0;
