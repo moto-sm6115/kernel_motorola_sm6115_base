@@ -3199,7 +3199,7 @@ static int tx_macro_probe(struct platform_device *pdev)
 
 	if (!bolero_is_va_macro_registered(&pdev->dev)) {
 		dev_err(&pdev->dev,
-			"%s: va-macro not registered\n", __func__);
+			"%s: va-macro not registered yet, defer\n", __func__);
 		return -EPROBE_DEFER;
 	}
 
