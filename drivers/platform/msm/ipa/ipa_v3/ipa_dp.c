@@ -15,7 +15,7 @@
 #include "ipahal/ipahal.h"
 #include "ipahal/ipahal_fltrt.h"
 
-#define IPA_WAN_AGGR_PKT_CNT 5
+#define IPA_WAN_AGGR_PKT_CNT 1
 #define IPA_WAN_NAPI_MAX_FRAMES (NAPI_WEIGHT / IPA_WAN_AGGR_PKT_CNT)
 #define IPA_WAN_PAGE_ORDER 3
 #define IPA_LAN_AGGR_PKT_CNT 5
@@ -3345,6 +3345,25 @@ static struct sk_buff *handle_skb_completion(struct gsi_chan_xfer_notify
 	if (notify->bytes_xfered)
 		rx_pkt->len = notify->bytes_xfered;
 
+	/*Drop packets when WAN consumer channel receive EOB event*/
+	if ((notify->evt_id == GSI_CHAN_EVT_EOB ||
+		sys->skip_eot) &&
+		sys->ep->client == IPA_CLIENT_APPS_WAN_CONS) {
+		dma_unmap_single(ipa3_ctx->pdev, rx_pkt->data.dma_addr,
+			sys->rx_buff_sz, DMA_FROM_DEVICE);
+		sys->free_skb(rx_pkt->data.skb);
+		sys->free_rx_wrapper(rx_pkt);
+		sys->eob_drop_cnt++;
+		if (notify->evt_id == GSI_CHAN_EVT_EOB) {
+			IPADBG("EOB event on WAN consumer channel, drop\n");
+			sys->skip_eot = true;
+		} else {
+			IPADBG("Reset skip eot flag.\n");
+			sys->skip_eot = false;
+		}
+		return NULL;
+	}
+
 	rx_skb = rx_pkt->data.skb;
 	skb_set_tail_pointer(rx_skb, rx_pkt->len);
 	rx_skb->len = rx_pkt->len;
@@ -3357,13 +3376,6 @@ static struct sk_buff *handle_skb_completion(struct gsi_chan_xfer_notify
 	if (unlikely(notify->veid >= GSI_VEID_MAX)) {
 		WARN_ON(1);
 		return NULL;
-	}
-
-	/*Assesrt when WAN consumer channel receive EOB event*/
-	if (unlikely(notify->evt_id == GSI_CHAN_EVT_EOB &&
-		sys->ep->client == IPA_CLIENT_APPS_WAN_CONS)) {
-		IPAERR("EOB event received on WAN consumer channel\n");
-		ipa_assert();
 	}
 
 	head = &rx_pkt->sys->pending_pkts[notify->veid];
@@ -3940,8 +3952,9 @@ static int ipa3_assign_policy(struct ipa_sys_connect_params *in,
 			 * Dont enable ipa_status for APQ, since MDM IPA
 			 * has IPA >= 4.5 with DPLv3.
 			 */
-			if (ipa3_ctx->platform_type == IPA_PLAT_TYPE_APQ &&
-				ipa3_is_mhip_offload_enabled())
+			if ((ipa3_ctx->platform_type == IPA_PLAT_TYPE_APQ &&
+				ipa3_is_mhip_offload_enabled()) ||
+				(ipa3_ctx->ipa_hw_type >= IPA_HW_v4_5))
 				sys->ep->status.status_en = false;
 			else
 				sys->ep->status.status_en = true;
@@ -4426,8 +4439,14 @@ static void ipa_gsi_irq_rx_notify_cb(struct gsi_chan_xfer_notify *notify)
 
 	sys = (struct ipa3_sys_context *)notify->chan_user_data;
 
-
-	sys->ep->xfer_notify_valid = true;
+	/*
+	 * In suspend just before stopping the channel possible to receive
+	 * the IEOB interrupt and xfer pointer will not be processed in this
+	 * mode and moving channel poll mode. In resume after starting the
+	 * channel will receive the IEOB interrupt and xfer pointer will be
+	 * overwritten. To avoid this process all data in polling context.
+	 */
+	sys->ep->xfer_notify_valid = false;
 	sys->ep->xfer_notify = *notify;
 
 	switch (notify->evt_id) {
@@ -4462,7 +4481,7 @@ static void ipa_dma_gsi_irq_rx_notify_cb(struct gsi_chan_xfer_notify *notify)
 		return;
 	}
 
-	sys->ep->xfer_notify_valid = true;
+	sys->ep->xfer_notify_valid = false;
 	sys->ep->xfer_notify = *notify;
 
 	switch (notify->evt_id) {

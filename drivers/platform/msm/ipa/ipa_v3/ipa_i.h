@@ -79,7 +79,7 @@
 
 #define IPA_MAX_NUM_REQ_CACHE 10
 
-#define NAPI_WEIGHT 60
+#define NAPI_WEIGHT 64
 
 #define IPADBG(fmt, args...) \
 	do { \
@@ -1027,6 +1027,8 @@ struct ipa3_sys_context {
 	atomic_t xmit_eot_cnt;
 	struct tasklet_struct tasklet;
 	struct work_struct tasklet_work;
+	bool skip_eot;
+	u32 eob_drop_cnt;
 
 	/* ordering is important - mutable fields go above */
 	struct ipa3_ep_context *ep;
