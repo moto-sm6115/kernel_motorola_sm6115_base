@@ -119,3 +119,4 @@ obj-$(CONFIG_TOUCHSCREEN_NT36XXX)        += nt36xxx/
 obj-$(CONFIG_TOUCHSCREEN_FTS_0FLASH_MMI) += focaltech_0flash_mmi/
 obj-$(CONFIG_TOUCHSCREEN_HIMAX_CHIPSET)	 += hxchipset/
 obj-$(CONFIG_INPUT_TOUCHSCREEN_MMI)      += touchscreen_mmi/
+obj-$(CONFIG_TOUCHSCREEN_GOODIX_GTX8_MMI) += goodix_gtx8_v1430_mmi/
