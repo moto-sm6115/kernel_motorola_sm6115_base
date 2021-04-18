@@ -111,12 +111,13 @@ obj-$(CONFIG_TOUCHSCREEN_COLIBRI_VF50)	+= colibri-vf50-ts.o
 obj-$(CONFIG_TOUCHSCREEN_ROHM_BU21023)	+= rohm_bu21023.o
 
 # Put the folder drivers touchscreen
-obj-$(CONFIG_TOUCHSCREEN_ST)             += st/
-obj-$(CONFIG_TOUCHSCREEN_SYNAPTICS_DSX)  += synaptics_dsx/
-obj-$(CONFIG_TOUCHSCREEN_SYNAPTICS_TCM)  += synaptics_tcm/
-obj-$(CONFIG_TOUCHSCREEN_FTS)            += focaltech_touch/
-obj-$(CONFIG_TOUCHSCREEN_NT36XXX)        += nt36xxx/
-obj-$(CONFIG_TOUCHSCREEN_FTS_0FLASH_MMI) += focaltech_0flash_mmi/
-obj-$(CONFIG_TOUCHSCREEN_HIMAX_CHIPSET)	 += hxchipset/
-obj-$(CONFIG_INPUT_TOUCHSCREEN_MMI)      += touchscreen_mmi/
-obj-$(CONFIG_TOUCHSCREEN_GOODIX_GTX8_MMI) += goodix_gtx8_v1430_mmi/
+obj-$(CONFIG_TOUCHSCREEN_ST)               += st/
+obj-$(CONFIG_TOUCHSCREEN_SYNAPTICS_DSX)    += synaptics_dsx/
+obj-$(CONFIG_TOUCHSCREEN_SYNAPTICS_TCM)    += synaptics_tcm/
+obj-$(CONFIG_TOUCHSCREEN_FTS)              += focaltech_touch/
+obj-$(CONFIG_TOUCHSCREEN_NT36XXX)          += nt36xxx/
+obj-$(CONFIG_TOUCHSCREEN_FTS_0FLASH_MMI)   += focaltech_0flash_mmi/
+obj-$(CONFIG_TOUCHSCREEN_HIMAX_CHIPSET)	   += hxchipset/
+obj-$(CONFIG_INPUT_TOUCHSCREEN_MMI)        += touchscreen_mmi/
+obj-$(CONFIG_TOUCHSCREEN_GOODIX_GTX8_MMI)  += goodix_gtx8_v1430_mmi/
+obj-$(CONFIG_TOUCHSCREEN_CHIPONE_TDDI)     += chipone_tddi_mmi/
